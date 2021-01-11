@@ -1,3 +1,3 @@
 # j1850VPW-CAN-Transceiver
 
-![schematic](converter.png)
+![schematic](schematic.png)
