@@ -1,79 +1,130 @@
 #include <SPI.h>
 #include <mcp2515.h>
 
-struct can_frame rpm;
-struct can_frame temp;
+void clearSpace();
+void clearBuffer();
+void printBuffer();
+void clearChar();
+int hexToInt(char a, char b);
+void getTemp(can_frame * b420);
+void getRpm(can_frame * b201);
+void getSpeed(can_frame * b201);
+
+char dummy;
+char timeout = 0;
+struct can_frame b201;
+struct can_frame b212;
+struct can_frame b420;
 MCP2515 mcp2515(10);
 
 void setup() {
-  rpm.can_id  = 0x201; //rpm
-  rpm.can_dlc = 8;
+  b201.can_id  = 0x201;
+  b201.can_dlc = 8;
+  b201.data[0] = (8000 * 4) / 256;  // high byte rpm
+  b201.data[1] = (8000 * 4) % 256;  // low byte rpm
+  b201.data[2] = 0;
+  b201.data[3] = 0;
+  b201.data[4] = 0;                 // high byte speed
+  b201.data[5] = 0;                 // Low byte speed
+  b201.data[6] = 0;                 // throttle pos
+  b201.data[7] = 0;                 //
+
+  b212.can_id  = 0x212;
+  b212.can_dlc = 7;
+  b212.data[0] = 0;
+  b212.data[1] = 0;
+  b212.data[2] = 0;
+  b212.data[3] = 0;
+  b212.data[4] = 0;
+  b212.data[5] = 0;
+  b212.data[6] = 0;
   
-  temp.can_id = 0x420;
-  temp.can_dlc = 1;
-  temp.data[0] = 0xFF;
+  b420.can_id = 0x420;
+  b420.can_dlc = 7;
+  b420.data[0] = 170; // coolant temp
+  b420.data[1] = 0;   // odometer
+  b420.data[2] = 0;
+  b420.data[3] = 0;
+  b420.data[4] = 1;   // oil pressure
+  b420.data[5] = 0;
+  b420.data[6] = 0;
   
-  delay(4000);
+  delay(3000);
   Serial.begin(9600);
-  Serial.println("ATST00");
-  clearBuffer();
+  //Serial.println("ATE0");
   mcp2515.reset();
   mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ);
   mcp2515.setNormalMode();
-  delay(2000);
+
+  for(int i = 0; i < 10; i++) { // start up test
+    mcp2515.sendMessage(&b201);
+    mcp2515.sendMessage(&b212);
+    mcp2515.sendMessage(&b420);
+    delay(100);
+  }
+  clearBuffer();
+  delay(1000);
 }
 
 void loop() {
-  char data;
-  
-  Serial.println("010c"); //coolant temp 1 byte
-  delay(100);
-  Serial.println("0105"); //rpm 2 bytes
-  delay(100);
-  Serial.println("010D"); //speed 1 byte
-  delay(100);
+
+  Serial.println("01 05"); // request coolant temp from elm322 mode 01 pid 05
+  delay(90);              //wait for reply
+  clearChar();
   while(Serial.available() > 0) {
-    data = Serial.read();
-    if(data == '4' && Serial.read() == '1') {
-      clearSpace();
-      data = Serial.read();
-      if(data == '0') {
-        data = Serial.read();
-        switch(data) {
-          case '5':
-            getTemp(&temp);
-            break;
-          case 'C':
-            getRpm(&rpm);
-            break;
-          case 'D':
-            getSpeed(&rpm);
-            break;
-        }
-      }
+    if(Serial.read() == '4' && Serial.read() == '1' && Serial.read() == ' ' && Serial.read() == '0' && Serial.read() == '5' && Serial.read() == ' ') {
+      getTemp(&b420);
+      clearBuffer();
+    }
+    else {
+      clearBuffer();
     }
   }
-  /*
-  Serial.print('\n');
-  Serial.print(temp.data[0]);
-  Serial.print('\n');
-  Serial.print('\n');
-  Serial.print(rpm.data[0]);
-  Serial.print('\n');
-  Serial.print('\n');
-  Serial.print(rpm.data[1]);
-  Serial.print('\n');
-  Serial.print('\n');
-  Serial.print(rpm.data[4]);
-  Serial.print('\n');
-  Serial.print('\n');
-  Serial.print(rpm.data[5]);
-  Serial.print('\n');
-  delay(500);
-  */
-  mcp2515.sendMessage(&rpm);
-  mcp2515.sendMessage(&temp);
-  //mcp2515.sendMessage(&oilTemp);
+  mcp2515.sendMessage(&b420);
+
+  Serial.println("01 0C"); // request rpm
+  delay(90);
+  clearChar();
+  while(Serial.available() > 0) {
+    if(Serial.read() == '4' && Serial.read() == '1' && Serial.read() == ' ' && Serial.read() == '0' && Serial.read() == 'C' && Serial.read() == ' ') {
+      getRpm(&b201);
+      clearBuffer();
+    }
+    else {
+      //b201.data[0] = (0 * 4) / 256;  // high byte rpm
+      //b201.data[1] = (0 * 4) % 256;  // low byte rpm
+      clearBuffer();
+    }
+  }
+  mcp2515.sendMessage(&b201);
+
+  Serial.println("01 0D"); // request speed
+  delay(90);
+  clearChar();
+  while(Serial.available() > 0) {
+    if(Serial.read() == '4' && Serial.read() == '1' && Serial.read() == ' ' && Serial.read() == '0' && Serial.read() == 'D' && Serial.read() == ' ') {
+      getSpeed(&b201);
+      clearBuffer();
+    }
+    else {
+      clearBuffer();
+    }
+  }
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b201);
+  delay(10);
+  mcp2515.sendMessage(&b212);
+  delay(10);
+  mcp2515.sendMessage(&b420);
 }
 
 void clearSpace() {
@@ -91,12 +142,24 @@ void clearBuffer() {
   }
 }
 
+
 void printBuffer() {
   char filler;
   while(Serial.available() > 0) {
     filler = Serial.read();
     Serial.print(filler);
     //Serial.print('\n');
+  }
+}
+
+void clearChar() {
+  while(Serial.peek() != '4') {
+    dummy = Serial.read();
+    timeout++;
+    if(timeout > 20) {
+      timeout = 0;
+      break;
+    }
   }
 }
 
@@ -117,15 +180,13 @@ int hexToInt(char a, char b) {
   return(num);
 }
 
-void getTemp(can_frame * temp) {
- 
-  clearSpace();
+void getTemp(can_frame * b420) {
   char a = Serial.read();
   char b = Serial.read();
-  temp->data[0] = (hexToInt(a,b) - 40);
+  b420->data[0] = ((hexToInt(a,b) - 40) * 9 / 5) + 32 - 40; // (hex to Int(a,b) - 40) gives ect in celcius, convert to farenheit and subtract 40. coolant temp gauge 50% = 145, engine operating temp = 185
 }
 
-void getRpm(can_frame * rpm) {
+void getRpm(can_frame * b201) {
   clearSpace();
   char a = Serial.read();
   char b = Serial.read();
@@ -136,20 +197,16 @@ void getRpm(can_frame * rpm) {
   unsigned int A = hexToInt(a,b);
   unsigned int B = hexToInt(c,d);
 
-  int RPM = ((256 * A) + B) / 4;
-  int lower = 0b0000000011111111;
-  int upper = 0b1111111100000000;
-  rpm->data[0] = (RPM | upper) >> 8;
-  rpm->data[1] = RPM | lower;
+  int rpm = ((256 * A) + B) / 4;
+  b201->data[0] = (rpm * 4) / 256;
+  b201->data[1] = (rpm * 4) % 256;
 }
 
-void getSpeed(can_frame * rpm) {
+void getSpeed(can_frame * b201) {
   clearSpace();
   char a = Serial.read();
   char b = Serial.read();
-  int sped = hexToInt(a,b);
-  int lower = 0b0000000011111111;
-  int upper = 0b1111111100000000;
-  rpm->data[4] = (sped | upper) >> 8;
-  rpm->data[5] = sped | lower;  
+  int kmh = hexToInt(a,b);
+  b201->data[4] = (kmh * 100 + 10000) / 256;
+  b201->data[5] = (kmh * 100 + 10000) % 256; 
 }
